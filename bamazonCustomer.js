@@ -1,6 +1,6 @@
 var mysql = require('mysql');
 var inquirer = require('inquirer');
-var table = require('cli-table');
+var Table = require('cli-table');
 
 var connection = mysql.createConnection({
     host: "localhost",
@@ -19,8 +19,10 @@ connection.connect(function(err) {
     console.log("connected as id " + connection.threadId);
 });
 
-
-displayStore(startApp);
+//variable to be used later
+var userChoice;
+//runs the app and prompts
+displayStore(questions);
 
 
 // This function displays the store
@@ -54,21 +56,81 @@ function displayStore(callback) {
         }
         // otherwise, prompt the user if they would like to continue
         else {
-            startOver();
+            restart();
         }
     });
 }
 
-function startApp() {
+function questions() {
     // Asks the user for the product they want to buy
     inquirer.prompt([
         {
-            name:"Buying",
+            name:"buying",
             type: "input",
-            message: "Enter the id of the item you would like to purchase.",
+            message: "Enter the id of the item you would like to purchase."
 
         }
     ]).then(function(response) {
+        userChoice = response.buying;
+        quantity(userChoice);
+    });
+}
 
+function quantity() {
+    inquirer.prompt([
+        {
+            type: "input",
+            name: "quantity",
+            message: "How many units would you like to purchase?"
+        }
+    ]).then(function(response) {
+        // This grabs the quantity from the table that matches the id
+        connection.query(`SELECT stock_quantity, product_name, price FROM products WHERE item_id = ` + userChoice, function(err, res) {
+            if (err) throw err;
+            // If the amount is less than the stock quantity, then it subtracts the difference and updates the total.
+            if (res[0].stock_quantity >= response.quantity) {
+
+                var newQuantity = res[0].stockQuantity - response.quantity;
+
+                connection.query(`UPDATE products SET ? WHERE ?`, [ {stock_quantity: newQuantity }, {item_id: userChoice} ], function(err, res) {
+                    if (err) throw err;
+                });
+c
+                // Shows the cost of the purchase
+                var cost = res[0].price * response.quantity;
+                console.log('\nTotal: $' + cost);
+                restart();
+            }
+            else if (res[0].stock_quantity === 0) {
+                console.log('\nSorry ' + res[0].productName + "is no longer in stock. Come back later.\n");
+                restart();
+            }
+            // If the user wants to buy more than the stock amount, it runs the function again and prompts to change their order.
+            else {
+                console.log("\nIt looks like we don't have enough to complete your order. Please modify your purchase");
+                quantity();
+            }
+        });
+    });
+};
+
+
+// This function asks the user if they want to start over
+function restart() {
+    inquirer.prompt([
+        {
+            type: "confirm",
+            name: "restart",
+            message: "Would you like to make another purchase?"
+        }
+    ]).then(function(res) {
+        if (res.restart === true) {
+            questions();
+        }
+        else
+        {
+            console.log("Thank you for your business!");
+            connection.end();
+        }
     });
 }
